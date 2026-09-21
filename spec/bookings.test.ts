@@ -80,6 +80,25 @@ describe("booking a seat", () => {
     expect(await page.text()).not.toContain("One Too Many");
   });
 
+  it("lets only one of two simultaneous requests take the last seat", async () => {
+    // the previous tests only ever book one at a time, so they can't catch a
+    // real race — this is the one the harness names as the app's whole
+    // point: fire two requests for the same last seat concurrently (no
+    // await between them) and confirm exactly one gets in.
+    const { id: raceSession, capacity: raceCapacity } = await findSessionWithSpareCapacity();
+    for (let n = 1; n < raceCapacity; n++) {
+      await book(raceSession, `Filler ${n}`);
+    }
+
+    const [a, b] = await Promise.all([book(raceSession, "Racer A"), book(raceSession, "Racer B")]);
+    const locations = [a, b].map((r) => r.headers.get("location"));
+    expect(locations.filter((loc) => loc === `/?booked=${raceSession}`)).toHaveLength(1);
+    expect(locations.filter((loc) => loc === `/?error=full&session=${raceSession}`)).toHaveLength(1);
+
+    const page = await fetch(baseUrl);
+    expect(await page.text()).toContain(`${raceCapacity} / ${raceCapacity} booked`);
+  });
+
   it("broadcasts a booking to every open tab over the SSE stream", async () => {
     // the first session is full by now (the previous test filled it); find
     // one that still has room left

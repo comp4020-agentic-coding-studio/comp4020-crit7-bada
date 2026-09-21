@@ -87,9 +87,16 @@ export type BookingResult =
 
 // The one contract this whole app exists to enforce: a session never holds
 // more people than it has seats, even when two people book the same last
-// seat at once. better-sqlite3 is synchronous, so db.transaction runs this
-// whole read-check-write as one atomic step — no other booking can land
-// between the seat count read and the insert.
+// seat at once. better-sqlite3 is synchronous and this function has no
+// `await` anywhere in it, so once a request enters here it runs the whole
+// read-check-write to completion before Node's event loop can start another
+// request's call to this same function — that's what actually rules out the
+// interleaving, not the db.transaction call by itself. Keep it that way: the
+// moment anything inside this function needs a real `await` (a remote DB, an
+// async driver), the check and the write can be scheduled apart again, and
+// only then does the transaction boundary start doing the real work of
+// stopping that. Verified live: two genuinely concurrent HTTP requests for
+// the last seat resolve to exactly one booking (spec/bookings.test.ts).
 export function bookSession(sessionId: number, personName: string): BookingResult {
   return db.transaction((tx) => {
     const session = tx.select().from(sessions).where(eq(sessions.id, sessionId)).get();
