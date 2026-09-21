@@ -1,54 +1,31 @@
 # Process overview
 
-<!-- TEMPLATE: this file is a shape to fill in, not a form. Replace everything
-     in it with your own overview, and delete this comment — `pnpm
-     check:evidence` will remind you if it's still here. -->
-
-Written by you, for a reader: how you got from the brief to the harness and
-agentic workflow behind this submission. Markers read this file and follow its
-citations; they don't trawl the repo for evidence you didn't point at.
-
-This file is the shape; the course site's
-[assessment page](https://comp.anu.edu.au/courses/comp4020-agentic-coding-studio/topics/assessment/#what-you-submit)
-is the requirement, and its
-[word counts](https://comp.anu.edu.au/courses/comp4020-agentic-coding-studio/topics/assessment/#word-counts)
-cover every deliverable.
-
 ## What I built
 
-A sentence or two. `README.md` is where the account of what the app is and what
-good means here lives; this file is how you got there.
+A tutorial/lab session booking page: courses, sessions, and bookings, with
+seats enforced so a session can never overbook and every open tab sees a
+booking the instant it lands.
 
 ## How I got here
 
-The account of the process: how the work actually went, and how you knew the
-result was right. Tell it in whatever order makes it clear. A weekly prototype
-needs a paragraph or two; an assignment needs more.
+The brief's own entity list — courses, sessions, bookings, people — mapped
+directly onto a schema, so I started there instead of the UI: `courses`,
+`sessions` (a time, room, and capacity), and `bookings`, with a unique
+constraint on `(session_id, person_name)` so the database itself stops a
+double-booking, not just the UI.
 
-Cite the record as you go, as links whose text is the commit hash or range and
-whose target is this repo's commit or compare URL, so a reader clicks straight
-to the evidence:
+The starter's guestbook already demonstrated the two hard parts of a
+full-stack prototype — a form that works with no client JS, and an SSE
+broadcast so other tabs find out live — so I kept both patterns and pointed
+them at bookings instead of messages. The one thing the guestbook didn't
+need and this app does is a real race condition: two people can go for the
+last seat in the same session. `bookSession` reads the current count and
+writes the new row inside one `db.transaction`, so the check and the write
+can't be split by a concurrent request the way a plain
+select-then-insert would.
 
-- one commit: [`a1b2c3d`](https://github.com/YOUR-ORG/YOUR-REPO/commit/a1b2c3d)
-- a range:
-  [`a1b2c3d...e4f5a6b`](https://github.com/YOUR-ORG/YOUR-REPO/compare/a1b2c3d...e4f5a6b)
-
-To pair a prompt with the commit it produced, quote the prompt (curated, not a
-full transcript) next to the citation:
-
-> the prompt, verbatim
-
-Screenshots are welcome where one carries the point better than a sentence does.
-Commit the file to this repo and link it with a **relative** path, which is what
-makes it render on GitHub: `![alt text](docs/before.png)`. Images don't count
-towards the word count and don't replace the citation.
-
-## Before you ship
-
-`pnpm check:evidence` verifies that this comment is gone, that your citations
-resolve to real commits, that a crit week's reflection entry is in
-`reflections/`, and that your `CLAUDE.md` is there. It checks that your account
-is traceable, not that it is good: that is the marker's call.
-
-Images aren't checked: unlike a citation whose SHA doesn't resolve, a broken
-image is visible the moment this file is rendered on GitHub.
+I replaced the starter's plumbing test with `spec/bookings.test.ts`, which
+drives the running app to fill a session exactly to capacity, checks the
+next booking is rejected, checks a duplicate name is rejected, and checks a
+booking on a different session reaches a second SSE connection.
+([`cff9e1c`](https://github.com/comp4020-agentic-coding-studio/comp4020-crit7-bada/commit/cff9e1c))
