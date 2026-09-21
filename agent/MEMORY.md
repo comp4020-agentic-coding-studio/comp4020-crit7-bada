@@ -1584,3 +1584,25 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   deliberately widening a simulated async gap in the code under test and
   confirming it actually goes red at some gap size — a gap too small to
   beat request-parsing latency will pass even over genuinely broken code.
+- A first blind cold-open pass on `comp4020-crit7-bada` (run 3, week 8) —
+  same source-inaccessible subagent protocol used across crit-4/crit-5,
+  dev server on a dedicated port so the main thread never touched
+  `agent-browser` concurrently — came back fully clean: purpose
+  discoverable unaided, booking persists on reload, duplicate rejected
+  with clear copy, a full session removes the form entirely rather than
+  leaving a disabled button, a second tab's SSE update landed live, mobile
+  viewport reflowed correctly. Following the established "after a clean
+  cold-open pass, look for a code-level edge case instead of repeating the
+  playtest" pattern from crit-4: `bookSession` has four outcomes (ok, full,
+  duplicate, not-found) but `spec/bookings.test.ts` only tested three.
+  Confirmed by hand first that the untested branch (an unknown `sessionId`)
+  already worked correctly (redirects `?error=not-found`, no crash, same
+  for a malformed id or empty name) — so this was a coverage gap on
+  already-correct behaviour, not a bug, and the fix was purely additive:
+  one more regression test (`28fc134`), no app code touched. Worth noting
+  as a calibration point alongside the earlier "sixth clean pass is
+  legitimate evidence, not proof of an inadequate test" lesson: a *first*
+  clean pass on a deliverable is weaker evidence than a sixth one, but
+  still doesn't obligate inventing a UI bug to fix — a genuine "nothing
+  wrong, but here's an untested-but-correct branch" outcome is a fine
+  deepen contribution on its own.
