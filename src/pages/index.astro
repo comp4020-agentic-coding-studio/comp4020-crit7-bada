@@ -1,8 +1,21 @@
 ---
-import { listMessages } from "../lib/db";
+import { listCourses } from "../lib/db";
 import "../styles.css";
 
-const messages = listMessages();
+const courses = listCourses();
+
+const params = Astro.url.searchParams;
+const errorReason = params.get("error");
+
+const notices: Record<string, string> = {
+  full: "That session filled up while you were typing — try another time.",
+  duplicate: "You already have a seat in that session.",
+  invalid: "Enter your name before booking.",
+  "not-found": "That session doesn't exist any more.",
+};
+const notice = errorReason ? { kind: "error" as const, text: notices[errorReason] ?? "Couldn't book that seat." } : params.has("booked")
+  ? { kind: "success" as const, text: "You're in — see you there." }
+  : null;
 ---
 
 <!doctype html>
@@ -10,43 +23,113 @@ const messages = listMessages();
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>COMP4020 prototype</title>
+    <title>Tutorial booking</title>
   </head>
   <body>
     <nav aria-label="site">
-      <a href="/">Guestbook</a>
+      <a href="/">Book a session</a>
       <a href="/readme/">About</a>
     </nav>
     <main>
-      <h1>Guestbook</h1>
+      <h1>Book a tutorial</h1>
       <p>
-        A minimal full-stack starter: messages live in SQLite on the machine's
-        volume (state survives a reload and a redeploy), and new messages
-        appear in every open tab over a server-sent-events stream — open this
-        page twice and sign it in one. Replace all of this with your own
-        prototype.
+        Every course's tutorial slots, seats left, and who's already in each
+        one — the thing ANU's own allocation page never shows you until after
+        you've already been bumped. Bookings here are visible to everyone the
+        moment they happen: open this page in a second tab and watch a seat
+        disappear from both at once.
       </p>
-      <form method="post" action="/api/messages">
-        <label for="body">Leave a message</label>
-        <input id="body" name="body" required maxlength="500" />
-        <button>Sign</button>
-      </form>
-      <ul id="messages">
-        {messages.map((message) => <li>{message.body}</li>)}
-      </ul>
+
+      {
+        notice && (
+          <p class:list={["notice", notice.kind]} role="status" aria-live="polite">
+            {notice.text}
+          </p>
+        )
+      }
+
+      {
+        courses.map((course) => (
+          <section aria-labelledby={`course-${course.id}`}>
+            <h2 id={`course-${course.id}`}>
+              {course.code} — {course.name}
+            </h2>
+            <ul class="sessions">
+              {course.sessions.map((session) => {
+                const full = session.booked >= session.capacity;
+                return (
+                  <li class="session" data-session-id={session.id} data-capacity={session.capacity}>
+                    <div class="session-time">
+                      <strong>{session.label}</strong>
+                      <span class="room">{session.room}</span>
+                    </div>
+                    <p class="seats" data-seats>
+                      {session.booked} / {session.capacity} booked
+                    </p>
+                    <div data-book-slot>
+                      {full ? (
+                        <p class="full" data-full>
+                          Full
+                        </p>
+                      ) : (
+                        <form method="post" action="/api/bookings">
+                          <input type="hidden" name="sessionId" value={session.id} />
+                          <label for={`name-${session.id}`}>Your name</label>
+                          <input
+                            id={`name-${session.id}`}
+                            name="personName"
+                            required
+                            maxlength="80"
+                          />
+                          <button>Book a seat</button>
+                        </form>
+                      )}
+                    </div>
+                    <ul class="attendees" data-attendees aria-label={`booked into ${session.label}`}>
+                      {session.bookedBy.map((name) => (
+                        <li>{name}</li>
+                      ))}
+                    </ul>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))
+      }
     </main>
     <script>
-      // The live half of the demo: subscribe to the SSE stream and prepend
-      // messages as they arrive. The form itself needs none of this — its
-      // POST + redirect re-renders the submitting tab from SQLite; this
-      // stream is how every other tab finds out.
-      const list = document.querySelector("#messages");
+      // The live half of the page: every open tab subscribes to the same
+      // booking stream, so a seat taken in one tab disappears from every
+      // other tab without a reload. The booking form itself needs none of
+      // this — its POST + redirect re-renders the submitting tab from
+      // SQLite; this stream is how every *other* tab finds out.
       const source = new EventSource("/api/events");
       source.addEventListener("message", (event) => {
-        const message = JSON.parse(event.data);
-        const item = document.createElement("li");
-        item.textContent = message.body;
-        list?.prepend(item);
+        const update: { sessionId: number; booked: number; bookedBy: string[] } = JSON.parse(event.data);
+        const item = document.querySelector(`[data-session-id="${update.sessionId}"]`);
+        if (!item) return;
+
+        const capacity = Number(item.getAttribute("data-capacity"));
+        const seats = item.querySelector("[data-seats]");
+        if (seats) seats.textContent = `${update.booked} / ${capacity} booked`;
+
+        const attendees = item.querySelector("[data-attendees]");
+        attendees?.replaceChildren(
+          ...update.bookedBy.map((name) => {
+            const li = document.createElement("li");
+            li.textContent = name;
+            return li;
+          }),
+        );
+
+        if (update.booked >= capacity) {
+          const slot = item.querySelector("[data-book-slot]");
+          const full = document.createElement("p");
+          full.className = "full";
+          full.textContent = "Full";
+          slot?.replaceChildren(full);
+        }
       });
     </script>
   </body>

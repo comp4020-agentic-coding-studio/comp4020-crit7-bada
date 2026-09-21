@@ -1,11 +1,21 @@
 # Your harness
 
-This file is yours, and it arrives empty on purpose. The rules you hold the
-agent to are part of what gets marked, so they should be rules you decided on.
+This is a tutorial/lab session booking app. The one thing that actually
+matters is `bookSession` in `src/lib/db.ts`: a session must never hold more
+bookings than its capacity, and the check-then-write has to happen inside a
+single `db.transaction` so two concurrent requests can't both pass the check
+before either writes. Any change to booking logic needs to preserve that —
+don't refactor it into a separate read then a separate write.
 
-Nothing about the starter is recorded here. What the repo ships is explained
-where it lives --- `fly.toml`, the `Dockerfile`, the CI workflow and
-`spec/README.md` each say what they fix --- and the
-[course website](https://comp.anu.edu.au/courses/comp4020-agentic-coding-studio/)
-publishes this deliverable's brief and spec. Read them before you plan or build;
-what the agent needs to carry from any of it is your call.
+The schema (`src/lib/schema.ts`) is ground truth. Change it there, run
+`pnpm db:generate`, commit the migration alongside — never hand-edit a
+migration or the database file.
+
+`spec/bookings.test.ts` is the contract: filling a session to capacity, a
+rejected overflow booking, a rejected duplicate name, and a live SSE
+broadcast. Keep it green; extend it rather than weakening an assertion when
+a change makes it fail.
+
+Don't add a waitlist, cancellation, or real accounts without deciding that's
+this week's actual scope — `README.md` explains why those are deliberately
+out for now. Run `pnpm check` before every commit.

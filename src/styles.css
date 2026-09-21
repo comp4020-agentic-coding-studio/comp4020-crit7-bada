@@ -15,17 +15,79 @@ a {
   color: #0b5fff;
 }
 
+nav {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+h2 {
+  margin-top: 2rem;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 0.3rem;
+}
+
+.notice {
+  padding: 0.6rem 1rem;
+  border-radius: 0.3rem;
+  font-weight: 600;
+}
+
+.notice.success {
+  background: #e6f4ea;
+  color: #1e6b34;
+}
+
+.notice.error {
+  background: #fdecea;
+  color: #a1260d;
+}
+
+.sessions {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.session {
+  border: 1px solid #ddd;
+  border-radius: 0.4rem;
+  padding: 1rem;
+}
+
+.session-time {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 1.05rem;
+}
+
+.room {
+  color: #555;
+}
+
+.seats {
+  margin: 0.3rem 0 0.6rem;
+  color: #333;
+}
+
+.full {
+  font-weight: 600;
+  color: #a1260d;
+}
+
 form {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
-  margin-block: 1.5rem;
+  margin: 0;
 }
 
 input {
   flex: 1;
-  min-width: 12rem;
+  min-width: 10rem;
   padding: 0.4rem 0.6rem;
   font: inherit;
 }
@@ -35,6 +97,9 @@ button {
   font: inherit;
 }
 
-#messages {
+.attendees {
+  margin: 0.6rem 0 0;
   padding-inline-start: 1.2rem;
+  color: #555;
+  font-size: 0.9rem;
 }
