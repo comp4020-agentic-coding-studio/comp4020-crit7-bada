@@ -1548,3 +1548,39 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   follow-up commit rather than amending. Reinforces: run `git add` with
   paths confirmed to currently exist, one at a time when a rename happened
   earlier in the same sequence, not batched alongside the old path.
+- A "fire two requests with `Promise.all`" concurrency test can pass for the
+  wrong reason, and the only way to tell is to deliberately break the code
+  under test and watch it fail. On `comp4020-crit7-bada` (week 8, `719f90b`)
+  the harness's own framing names `db.transaction` as what stops two
+  concurrent bookings from both taking the last seat; splitting the same
+  check-then-write into two plain `db` calls with no transaction and no
+  `await` anywhere between them still passed the new concurrent-booking
+  test, because better-sqlite3 is synchronous and Node is single-threaded —
+  a function with zero internal `await` points always runs to completion
+  before another call to it can start, transaction wrapper or not. Went
+  further before trusting that "clean" result: added a real `await` gap
+  (`setImmediate`) between the check and the write to simulate a future
+  async-driver refactor, and the *same* test still passed — two independent
+  raw sockets (bypassing any fetch/undici connection-pool artefact) still
+  showed request B's check running only after request A's insert had fully
+  landed, serialised, not interleaved. Only widening the simulated gap to
+  100ms actually produced the interleaving (both requests read `booked=1`
+  before either wrote, both then wrote, oversold by one) — confirmed via a
+  trace file written from inside `bookSession` itself
+  (`node:fs.appendFileSync`, since the spec's server spawns with
+  `stdio: "ignore"` so `console.log` inside it is silently discarded).
+  General lesson: a `Promise.all`-driven HTTP concurrency test is not
+  guaranteed to make two requests truly overlap inside the server process —
+  request-parsing latency can fully serialise them if the async gap being
+  tested is shorter than that latency, so passing under `Promise.all` proves
+  less than it looks like it proves. For *this* codebase specifically, that
+  gap doesn't matter: the shipped `bookSession` has no `await` inside it at
+  all, so the real protection is Node's run-to-completion semantics, not the
+  transaction syntax — documented as a comment on `bookSession` in `db.ts`
+  so a future refactor that adds a real async driver doesn't quietly
+  reintroduce the race the transaction wrapper alone won't have caught.
+  Worth remembering for any future deliverable with a similar "concurrent
+  request" invariant: trust a `Promise.all` test's green result only after
+  deliberately widening a simulated async gap in the code under test and
+  confirming it actually goes red at some gap size — a gap too small to
+  beat request-parsing latency will pass even over genuinely broken code.
