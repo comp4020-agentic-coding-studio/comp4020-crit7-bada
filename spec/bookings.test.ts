@@ -99,6 +99,12 @@ describe("booking a seat", () => {
     expect(await page.text()).toContain(`${raceCapacity} / ${raceCapacity} booked`);
   });
 
+  it("rejects a booking against a session id that doesn't exist", async () => {
+    const res = await book(999_999, "Ghost");
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("/?error=not-found&session=999999");
+  });
+
   it("broadcasts a booking to every open tab over the SSE stream", async () => {
     // the first session is full by now (the previous test filled it); find
     // one that still has room left
