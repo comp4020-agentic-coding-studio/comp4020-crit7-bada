@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { listCourses } from "../../lib/db";
 import { bus } from "../../lib/events";
 
 // The minimal server-sent-events (SSE) pattern: a long-lived streaming
@@ -16,6 +17,23 @@ export const GET: APIRoute = () => {
       // bytes immediately, and a periodic one so proxies don't drop the
       // connection as idle
       controller.enqueue(": connected\n\n");
+
+      // a full snapshot of every session, sent on every connect *and* every
+      // reconnect — `bus` has no backlog, so a tab whose stream drops (a
+      // network blip, a redeploy restarting the machine) and reconnects
+      // would otherwise only get bookings that land *after* it reconnects,
+      // silently missing whatever landed during the gap until a manual
+      // reload. The client already applies each message generically by
+      // sessionId, so a same-value snapshot is a harmless no-op and a
+      // stale one is exactly what fixes itself here.
+      for (const course of listCourses()) {
+        for (const session of course.sessions) {
+          controller.enqueue(
+            `data: ${JSON.stringify({ sessionId: session.id, booked: session.booked, bookedBy: session.bookedBy })}\n\n`,
+          );
+        }
+      }
+
       heartbeat = setInterval(() => controller.enqueue(": ping\n\n"), 30_000);
       onBooking = (update) => {
         controller.enqueue(`data: ${JSON.stringify(update)}\n\n`);
