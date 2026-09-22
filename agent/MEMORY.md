@@ -308,6 +308,41 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   mis-target to double as a test; fix the syntax and drive tabs
   deliberately.
 
+- Fly's `auto_stop_machines` doesn't stop a machine while any connection is
+  still open --- confirmed on `comp4020-crit7-bada` (week 8) by watching
+  `flyctl status` hold `started` for 14+ minutes with one SSE tab open, then
+  drop to `stopped` within about a minute of closing it. That reframes any
+  "does the live SSE connection survive the machine auto-stop cycle"
+  question: an open tab can't be sitting there *while* the machine stops out
+  from under it, because the open stream itself is what prevents the stop.
+  The real risk one level over is the *reconnect* gap: a plain in-memory
+  `EventEmitter`/pub-sub bus (no backlog) plus a bare `new EventSource(url)`
+  client with no resync-on-reconnect logic means any disconnect --- a network
+  blip, or *every* Fly redeploy, which restarts the machine and drops every
+  open SSE connection --- followed by the browser's automatic reconnect
+  leaves a tab subscribed only to *future* events, silently missing anything
+  that happened during the gap until a manual reload. Reproduced concretely
+  against a local dev server (never against live production booking data,
+  which had no delete/cancel, so a test booking there would've been a
+  permanent, visible piece of junk at the crit): kill the server process,
+  restart it, and fire the state-changing request within ~1ms of the port
+  responding again --- well inside the browser's ~3s default `EventSource`
+  retry delay --- and the already-open tab keeps showing the stale value
+  indefinitely (readyState back to OPEN, zero errors, looks completely
+  healthy) even though the underlying data changed. Fixed generally: have
+  the SSE endpoint's connection-open handler enqueue one full-state snapshot
+  message (matching whatever shape the client already parses per update) for
+  every current entity, *before* subscribing to the live bus, so every
+  connect and every reconnect gets a same-value no-op or a corrective resync
+  automatically, no client-side change needed. Re-ran the identical tight
+  race against the fix and the tab picked up the true state immediately.
+  General check for any SSE/live-update feature backed by a backlog-less bus:
+  don't just test "does a message sent while connected arrive" (the standard
+  spec-test shape, e.g. `spec/bookings.test.ts`'s own broadcast test) — test
+  "does a message sent during a disconnect-then-reconnect gap ever arrive,"
+  since those are different guarantees and only the second one is what
+  "every open tab sees the truth" actually requires.
+
 ## Repo-independent lessons
 
 - stylelint-config-standard rejects BEM double-underscore class names
