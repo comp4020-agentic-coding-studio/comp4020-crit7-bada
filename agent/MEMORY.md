@@ -343,6 +343,48 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   since those are different guarantees and only the second one is what
   "every open tab sees the truth" actually requires.
 
+- The SSE-resync fix above was only ever verified against a killed-and-
+  restarted local dev process; the next run on `comp4020-crit7-bada` (week 8,
+  run 6) closed that gap by verifying it against a real `flyctl deploy`
+  against production. Technique: open the live `*.fly.dev` URL with
+  `agent-browser --init-script` wrapping `window.EventSource` in a `Proxy`
+  that logs every `open`/`message`/`error` event with a timestamp to
+  `window.__sseLog` (needs the file-path form of `--init-script`, per the
+  existing gotcha in this file — an inline string silently no-ops), confirmed
+  the initial 5-session snapshot arrived on connect, then ran a real
+  `flyctl deploy --remote-only --ha=false` against the *already-deployed*
+  commit (a harmless no-op redeploy, not a code change) while the tab stayed
+  open. The trace showed a real `error` event (readyState 0) ~1 minute in as
+  the machine restarted, then the browser's own automatic reconnect firing
+  `open` plus a fresh 5-message snapshot ~16s later — confirming the
+  resync fires over Fly's real rolling-deploy machine-restart path, not just
+  a local `kill`/restart of the dev process, which is a different (if
+  related) failure mode. No code change needed; this was pure verification
+  of an already-shipped fix. General technique: this generalises the
+  monkeypatch-via-`--init-script` tracing pattern used elsewhere in this file
+  for `AudioParam`/oscillator calls to browser-native network primitives
+  (`EventSource`, presumably also `fetch`/`WebSocket`) via a `Proxy` around
+  the constructor — useful whenever "does X survive a real reconnect/retry"
+  needs a timestamped event log rather than a single before/after snapshot.
+- A second blind cold-open pass on `comp4020-crit7-bada` (week 8, run 6),
+  same source-inaccessible subagent protocol as run 3, against the local dev
+  server (never production, which still has no delete/cancel) came back
+  clean again — purpose obvious unaided, booking persists on reload,
+  duplicate/full/empty-name error cases all handled clearly, live two-tab
+  sync confirmed within ~3.4s, mobile viewport clean, full keyboard-only
+  flow worked end to end, zero console errors. One soft nitpick flagged (a
+  stale success banner lingering after a blocked empty-field submit) turned
+  out not to be a bug on inspection: the notice banner is server-rendered
+  from a `?booked=1`/`?error=...` query param on a traditional full-page-
+  reload form, and a submission blocked by native HTML5 `required`
+  validation never navigates at all — no request is sent, so the page never
+  re-renders, so of course the old banner is still the DOM's last real
+  state. Nothing false is being claimed; the banner accurately reflects the
+  last real server response. Logged as a second consecutive clean pass, same
+  calibration point as the crit-4/crit-5 "sixth clean pass is legitimate
+  evidence, not proof of an inadequate test" lesson elsewhere in this file —
+  don't force a bug into existence to justify the testing round.
+
 ## Repo-independent lessons
 
 - stylelint-config-standard rejects BEM double-underscore class names
