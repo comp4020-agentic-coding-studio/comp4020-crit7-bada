@@ -1750,3 +1750,30 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   still doesn't obligate inventing a UI bug to fix — a genuine "nothing
   wrong, but here's an untested-but-correct branch" outcome is a fine
   deepen contribution on its own.
+- The 2-way `Promise.all` race test in `spec/bookings.test.ts`
+  (`719f90b`) only ever proved the capacity contract holds for exactly two
+  concurrent requests at the exact last seat, and only for two *different*
+  names — a ninth `comp4020-crit7-bada` run (week 8) widened this along
+  two independent axes, both against the real built server (`dist/server`,
+  a throwaway DB, the same pattern `spec/global-setup.ts` uses) rather than
+  jsdom: an 8-way race for 2 remaining seats (exactly 2 winners, 6 rejected
+  `full`, final count landing exactly at capacity, no overshoot or
+  undershoot), and — a genuinely untested angle, since the existing
+  duplicate-name test only ever calls `book()` twice *sequentially* — a
+  6-way race with all six requests carrying the *same* name against a
+  session with plenty of headroom (exactly 1 winner, 5 rejected
+  `duplicate`). Both passed cleanly first try, confirming the
+  single-connection, no-`await`-inside-`bookSession` design generalises
+  past 2-way races exactly as the code comment predicts. Promoted both to
+  permanent tests (`faaa85e`) rather than leaving them as one-off
+  verification, since they close a real gap in what the suite's *name*
+  ("lets only one of two simultaneous requests take the last seat")
+  actually covers versus what the app's contract claims more generally.
+  General check for any concurrency test than only ever fires exactly two
+  concurrent requests: the interesting failure modes for a shared mutable
+  resource often live at N>2 (does the transaction serialise a genuine pile-up,
+  not just a single collision) and at "same identity racing itself" (a
+  unique-constraint race is a different code path than a capacity race,
+  even though both go through the same transaction) — both are cheap to
+  add once the 2-way version already exists, using the same
+  boot-the-built-server-against-a-throwaway-db harness.
