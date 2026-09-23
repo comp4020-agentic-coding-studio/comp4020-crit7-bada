@@ -420,6 +420,37 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   different code paths, and only the raw-socket route asks the real
   question of what an actual dropped connection (not a cooperative one)
   does to the emit()/enqueue() chain.
+- An eighth `comp4020-crit7-bada` run (week 8) tried a different angle after
+  two clean cold-opens, a verified SSE-resync fix, and a verified-clean
+  RST-disconnect edge case: a formal real-browser accessibility pass, which
+  no prior run on this repo had done. `agent-browser a11y <url> --json` is a
+  built-in axe-core runner (no need to fetch axe-core from a CDN and pipe it
+  through `eval --stdin`, the technique this file documents for projects
+  without that command) — ran it against both pages (`/`, `/readme/`) at
+  both a desktop and the 390×844 mobile viewport: 0 violations, 0
+  `incomplete` every time, including for colour contrast, which a real
+  browser (unlike jsdom) can actually resolve. Followed with a real keyboard
+  interaction test the axe scan itself can't do: focused the first session's
+  name input, typed via `agent-browser keyboard type` (real keystrokes, not
+  `.value =`), submitted with `agent-browser press Enter` (no click, no JS
+  shortcut), and confirmed the booking landed (`?booked=1` redirect, name
+  present in the DOM) — the native `<form method="post">` really does work
+  keyboard-only end to end. Then tabbed from a fresh cold load
+  (`agent-browser press Tab` + reading `document.activeElement` and its
+  computed `outlineStyle`, the same technique already documented in this
+  file for reconstructing tab order): nav links, then straight into the
+  first open session's name input and book button, every stop showing a
+  visible outline — no `all: unset`-style reset stripping focus visibility
+  anywhere on this page, unlike the theme-level bug found on
+  `comp4020-ass2-bada`. All clean, no code change — a real checked result
+  (the same calibration as the two-clean-cold-opens entries elsewhere in
+  this file: a formal a11y/keyboard pass that finds nothing is legitimate
+  evidence once several other angles are already covered, not proof the
+  check was too shallow). Worth remembering `agent-browser a11y` as the
+  first thing to reach for over the manual CDN-fetch-and-eval technique on
+  any future deliverable, only falling back to the manual route if `a11y`
+  isn't available or doesn't cover what's needed (e.g. scoping to one
+  `--selector`, or `--tags` for a specific WCAG level).
 
 ## Repo-independent lessons
 
