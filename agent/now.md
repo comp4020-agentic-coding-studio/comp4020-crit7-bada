@@ -1,48 +1,55 @@
 # now
 
-## State as of this run (2026-09-23, 125.5 h to cutoff, `comp4020-crit7-bada`) --- DEEPEN
+## State as of this run (2026-09-23, 118.5 h to cutoff, `comp4020-crit7-bada`) --- DEEPEN
 
-Sixth run. Re-fetched the crit 07 source: unchanged. Picked up both remaining
-candidates from the previous hand-off; neither needed a code change, both
-were pure verification.
+Seventh run. Re-fetched the crit 07 source: unchanged. Picked up candidate
+(1) from the previous hand-off — the code-level edge case a playtest can't
+reach — and ran it as a real test, not just reasoning about it.
 
-1. Confirmed the SSE resync fix (`066c66d`) holds under a real `flyctl
-   deploy`, not just a killed local dev process. Traced `window.EventSource`
-   via an `agent-browser --init-script` `Proxy` against the live
-   `*.fly.dev` URL, ran a real (no-op, same-commit) redeploy while the tab
-   stayed open, and watched a genuine `error`/reconnect/resync cycle in the
-   trace log. Full details and the technique are in `MEMORY.md`.
-2. Ran a second blind cold-open playtest (subagent, source-inaccessible,
-   against the local dev server on a dedicated port, never touching
-   `agent-browser` myself concurrently) — came back clean. One flagged soft
-   nitpick (a stale success banner after a blocked empty-name submit)
-   checked out as not a bug: it's a full-page-reload form, so a
-   validation-blocked submit never navigates, so the DOM correctly never
-   changed. Logged as the second consecutive clean pass.
+Tested whether `bus.emit("booking", ...)` in `src/pages/api/bookings.ts`
+(synchronous, outside the transaction, after a successful booking) could
+propagate a throw from a dead SSE listener's `controller.enqueue()` back
+into the POST handler — which would mean a user sees a 500 for a booking
+that actually committed. Drove a raw `net.Socket` SSE connection and RST'd
+it (`resetAndDestroy()`, not a graceful close) with zero delay before firing
+a booking, to hit the narrowest possible window. Clean: no throw, no 500,
+other tabs unaffected. Went further and checked for a leaked listener if
+`cancel()` never fires for an RST specifically (only temporarily instrumented
+with `console.error` in `start()`/`cancel()`, viewed via `astro dev logs` —
+the daemonized dev server's own stdout, not the wrapper process's — then
+fully reverted before doing anything else, never committed): `cancel()`
+fired and the listener count returned to 0 every single time. No code
+change; a real checked-and-clean result. Full technique and result are in
+`MEMORY.md`.
 
-`pnpm check` still 32/32 green. Working tree was clean before and after this
-run — nothing to commit, since both threads were verification-only. Fly
-machine confirmed back to `started` after the verification redeploy (same
-commit as before, `066c66d`'s image); no drift from what's already live.
+Also re-checked candidate (2): grepped `src/` for waitlist/cancel/login/
+account — the only hit is the SSE stream's own `cancel()` lifecycle method,
+no scope creep against `README.md`'s stated exclusions.
+
+`pnpm check` still 32/32 green. Working tree was clean before and after
+this run (the instrumentation was reverted, not committed) — nothing to
+commit. Live `https://comp4020-crit7-bada.fly.dev/` still answers 200, same
+deployed commit as before (`066c66d`) — no redeploy needed since nothing
+changed.
 
 ## Single most important next action
 
-Not the finishing run yet (125.5h at this run start). Two consecutive clean
-cold-open passes plus a verified-under-real-deploy SSE fix means the core
-booking flow and its live-update guarantee are both solid — the next deepen
-run's best use of time is probably NOT a third identical cold-open pass.
-Better candidates: (1) a code-level edge case scan (the pattern that worked
-well on crit-4/crit-5: after cold-opens go clean, look for something a
-playtest can't reach — e.g. what happens to an in-flight SSE stream if the
-server process itself throws/crashes mid-request, or whether `bookSession`'s
-transaction genuinely blocks a *three-way* race, not just the two-way one
-already tested in `719f90b`); (2) re-read `README.md`'s stated scope
-exclusions (waitlist, cancellation, real accounts) against the live app once
-more to confirm nothing has crept in. When told this is the last run: update
-`PROCESS.md` to name the concurrency test, the not-found coverage fix, and
-the SSE-resync fix (word-cap permitting --- likely the two or three
-strongest, not all of them, per the doctrine's "one narrative" guidance
-already applied to a similar backlog on `comp4020-ass2-bada`), and write
+Not the finishing run yet (118.5h at this run start). Two clean cold-opens,
+a verified-under-real-deploy SSE resync fix, and now a verified-clean
+disconnect/emit edge case means the core contract (no overbooking, live
+truth in every tab, no silent failure mode on a dropped connection) is
+thoroughly checked from multiple angles. The next deepen run's best use of
+time is probably NOT another identical investigation thread — consider
+instead: (1) a fresh third blind cold-open pass only if enough real time has
+passed that regressions could plausibly have crept in (unlikely this soon);
+(2) whether `pnpm db:generate`/the migration story still holds if the schema
+needs to grow at all (it hasn't needed to); (3) start drafting `PROCESS.md`
+language early (not writing the file yet — that's a finishing step) so the
+finishing run isn't starting from scratch. When told this is the last run:
+write `PROCESS.md` naming the two or three strongest threads (the
+concurrency test `719f90b`, the SSE-resync fix `066c66d` verified under a
+real Fly redeploy, and possibly the not-found coverage `28fc134` — not all
+of them, per the doctrine's "one narrative" guidance), and write
 `reflections/crit-7.md` headed "Build the ANU system you wish existed" (the
 source's title, never a week number). Do not write the reflection file
 before that run.

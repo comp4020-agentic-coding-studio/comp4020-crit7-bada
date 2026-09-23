@@ -384,6 +384,42 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   calibration point as the crit-4/crit-5 "sixth clean pass is legitimate
   evidence, not proof of an inadequate test" lesson elsewhere in this file —
   don't force a bug into existence to justify the testing round.
+- A seventh `comp4020-crit7-bada` run (week 8) tried a code-level edge case
+  a playtest can't reach: `bookings.ts`'s `POST` handler calls
+  `bus.emit("booking", ...)` synchronously, outside the transaction, right
+  after a successful `bookSession` — and `events.ts`'s listener calls
+  `controller.enqueue(...)` directly, with no try/catch. Node's
+  `EventEmitter.emit` is synchronous, so a throw inside any one listener
+  (e.g. from writing to a tab whose connection just died) would propagate
+  straight back into the POST handler *after the booking had already
+  committed* — a worse failure than a lost broadcast, since the user would
+  see a 500 for a booking that actually succeeded, and any listener
+  registered after the throwing one would miss the event entirely. Tested
+  for real with a raw `net.Socket` (not `agent-browser` — this is a
+  server-side Node question, not a browser one): opened a real SSE
+  connection with a bare TCP socket, then `socket.resetAndDestroy()`'d it
+  (a genuine RST, not a graceful FIN) with zero delay before immediately
+  firing a booking, to catch the narrowest possible window before the
+  server could notice the disconnect. No throw, no 500, other tabs
+  unaffected — `controller.enqueue()` only queues into the stream, it
+  doesn't synchronously write to the socket, so a dead connection surfaces
+  as an async stream error, never a synchronous throw back through
+  `emit()`. Went one step further to check for a *slower* failure mode
+  (a leaked listener/orphaned `setInterval` if `cancel()` never fires for
+  an RST specifically, since `cancel()` is normally documented for
+  cooperative unsubscribes like `reader.cancel()`): temporarily added
+  `console.error` tracing to `start()`/`cancel()` (reverted before
+  committing, never shipped) and confirmed via `astro dev logs` — not the
+  wrapper process's own stdout, since `astro dev` daemonizes and forking
+  the visible CLI process's log misses the real server output entirely —
+  that every abrupt-RST connection still gets a `cancel()` call and the
+  listener count returns to exactly 0 every time. Confirmed clean, no code
+  change. General technique for any future SSE/EventEmitter-based
+  broadcast: test the disconnect path with a raw socket RST, not just
+  `reader.cancel()` or closing the fetch response — they exercise
+  different code paths, and only the raw-socket route asks the real
+  question of what an actual dropped connection (not a cooperative one)
+  does to the emit()/enqueue() chain.
 
 ## Repo-independent lessons
 
