@@ -127,4 +127,45 @@ describe("booking a seat", () => {
     await reader.cancel();
     expect(received).toContain(`"sessionId":${otherSession}`);
   }, 10_000);
+
+  it("resolves a wide N-way race for the last few seats without overshoot or undershoot", async () => {
+    // the earlier race test only ever fires two requests at the very last
+    // seat — this asks whether the same transaction boundary holds when more
+    // requests land at once than there are seats left, not just one more
+    // than fits.
+    const { id, capacity, booked } = await findSessionWithSpareCapacity();
+    const spare = capacity - booked;
+    const leaveOpen = Math.min(2, spare);
+    for (let n = 1; n <= spare - leaveOpen; n++) {
+      await book(id, `Wide filler ${n}`);
+    }
+
+    const racers = leaveOpen + 4;
+    const results = await Promise.all(
+      Array.from({ length: racers }, (_, i) => book(id, `Wide racer ${i}`)),
+    );
+    const locations = results.map((r) => r.headers.get("location"));
+    expect(locations.filter((l) => l === `/?booked=${id}`)).toHaveLength(leaveOpen);
+    expect(locations.filter((l) => l === `/?error=full&session=${id}`)).toHaveLength(
+      racers - leaveOpen,
+    );
+
+    const page = await fetch(baseUrl);
+    expect(await page.text()).toContain(`${capacity} / ${capacity} booked`);
+  });
+
+  it("resolves a same-name double-submit race to exactly one booking", async () => {
+    // a double/triple-click submit sends the same person's name in several
+    // concurrent requests — this is the unique-constraint side of the
+    // contract, distinct from the capacity race above.
+    const { id } = await findSessionWithSpareCapacity();
+    const results = await Promise.all(Array.from({ length: 5 }, () => book(id, "Double Clicker")));
+    const locations = results.map((r) => r.headers.get("location"));
+    expect(locations.filter((l) => l === `/?booked=${id}`)).toHaveLength(1);
+    expect(locations.filter((l) => l === `/?error=duplicate&session=${id}`)).toHaveLength(4);
+
+    const page = await fetch(baseUrl);
+    const occurrences = ((await page.text()).match(/Double Clicker/g) ?? []).length;
+    expect(occurrences).toBe(1);
+  });
 });
