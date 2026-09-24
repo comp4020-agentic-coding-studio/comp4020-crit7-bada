@@ -20,7 +20,11 @@ export const POST: APIRoute = async ({ request, redirect }) => {
 
   const result = bookSession(sessionId, personName);
   if (!result.ok) {
-    return redirect(`/?error=${result.reason}&session=${sessionId}`, 303);
+    // The fragment scrolls the rejected session into view and, paired with
+    // its tabindex="-1" in index.astro, gives it focus — otherwise a generic
+    // top-of-page banner leaves the user to hunt for which of several
+    // sessions their booking actually failed on.
+    return redirect(`/?error=${result.reason}&session=${sessionId}#session-${sessionId}`, 303);
   }
 
   bus.emit("booking", { sessionId, booked: result.session.booked, bookedBy: result.session.bookedBy });

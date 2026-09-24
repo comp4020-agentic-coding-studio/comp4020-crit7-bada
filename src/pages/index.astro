@@ -6,6 +6,10 @@ const courses = listCourses();
 
 const params = Astro.url.searchParams;
 const errorReason = params.get("error");
+// Only meaningful alongside an error: highlights and focuses the one session
+// a rejected booking actually belongs to, instead of leaving a generic
+// top-of-page banner disconnected from which of several sessions failed.
+const errorSessionId = errorReason ? Number(params.get("session")) : null;
 
 const notices: Record<string, string> = {
   full: "That session filled up while you were typing — try another time.",
@@ -59,10 +63,12 @@ const notice = errorReason ? { kind: "error" as const, text: notices[errorReason
                 const full = session.booked >= session.capacity;
                 return (
                   <li
-                    class="session"
+                    id={`session-${session.id}`}
+                    class:list={["session", errorSessionId === session.id && "session-error"]}
                     data-session-id={session.id}
                     data-capacity={session.capacity}
                     aria-live="polite"
+                    tabindex={errorSessionId === session.id ? -1 : undefined}
                   >
                     <div class="session-time">
                       <strong>{session.label}</strong>

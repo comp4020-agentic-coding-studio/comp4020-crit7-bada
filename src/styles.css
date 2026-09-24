@@ -56,6 +56,11 @@ h2 {
   padding: 1rem;
 }
 
+.session-error {
+  border-color: #a1260d;
+  background: #fdecea;
+}
+
 .session-time {
   display: flex;
   justify-content: space-between;

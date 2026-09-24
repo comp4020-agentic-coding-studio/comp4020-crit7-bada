@@ -63,7 +63,7 @@ describe("booking a seat", () => {
   it("rejects the same person booking the same session twice", async () => {
     const res = await book(sessionId, "Ada");
     expect(res.status).toBe(303);
-    expect(res.headers.get("location")).toBe(`/?error=duplicate&session=${sessionId}`);
+    expect(res.headers.get("location")).toBe(`/?error=duplicate&session=${sessionId}#session-${sessionId}`);
   });
 
   it("refuses a booking once every seat is taken", async () => {
@@ -74,7 +74,7 @@ describe("booking a seat", () => {
     }
     const overflow = await book(sessionId, "One Too Many");
     expect(overflow.status).toBe(303);
-    expect(overflow.headers.get("location")).toBe(`/?error=full&session=${sessionId}`);
+    expect(overflow.headers.get("location")).toBe(`/?error=full&session=${sessionId}#session-${sessionId}`);
 
     const page = await fetch(baseUrl);
     expect(await page.text()).not.toContain("One Too Many");
@@ -93,7 +93,7 @@ describe("booking a seat", () => {
     const [a, b] = await Promise.all([book(raceSession, "Racer A"), book(raceSession, "Racer B")]);
     const locations = [a, b].map((r) => r.headers.get("location"));
     expect(locations.filter((loc) => loc === `/?booked=${raceSession}`)).toHaveLength(1);
-    expect(locations.filter((loc) => loc === `/?error=full&session=${raceSession}`)).toHaveLength(1);
+    expect(locations.filter((loc) => loc === `/?error=full&session=${raceSession}#session-${raceSession}`)).toHaveLength(1);
 
     const page = await fetch(baseUrl);
     expect(await page.text()).toContain(`${raceCapacity} / ${raceCapacity} booked`);
@@ -102,7 +102,7 @@ describe("booking a seat", () => {
   it("rejects a booking against a session id that doesn't exist", async () => {
     const res = await book(999_999, "Ghost");
     expect(res.status).toBe(303);
-    expect(res.headers.get("location")).toBe("/?error=not-found&session=999999");
+    expect(res.headers.get("location")).toBe("/?error=not-found&session=999999#session-999999");
   });
 
   it("broadcasts a booking to every open tab over the SSE stream", async () => {
@@ -146,7 +146,7 @@ describe("booking a seat", () => {
     );
     const locations = results.map((r) => r.headers.get("location"));
     expect(locations.filter((l) => l === `/?booked=${id}`)).toHaveLength(leaveOpen);
-    expect(locations.filter((l) => l === `/?error=full&session=${id}`)).toHaveLength(
+    expect(locations.filter((l) => l === `/?error=full&session=${id}#session-${id}`)).toHaveLength(
       racers - leaveOpen,
     );
 
@@ -162,7 +162,7 @@ describe("booking a seat", () => {
     const results = await Promise.all(Array.from({ length: 5 }, () => book(id, "Double Clicker")));
     const locations = results.map((r) => r.headers.get("location"));
     expect(locations.filter((l) => l === `/?booked=${id}`)).toHaveLength(1);
-    expect(locations.filter((l) => l === `/?error=duplicate&session=${id}`)).toHaveLength(4);
+    expect(locations.filter((l) => l === `/?error=duplicate&session=${id}#session-${id}`)).toHaveLength(4);
 
     const page = await fetch(baseUrl);
     const occurrences = ((await page.text()).match(/Double Clicker/g) ?? []).length;
