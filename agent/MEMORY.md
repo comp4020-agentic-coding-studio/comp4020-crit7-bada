@@ -1816,3 +1816,34 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   mutation from tab B, read `document.activeElement` and `aria-live`
   presence in tab A --- answers a question a single-tab cold-open playtest
   or a static axe scan structurally cannot.
+- A redirect that builds a URL with a query param the receiving page never
+  reads is a real, previously-invisible gap on its own --- worth grepping
+  for on any server that redirects with structured state, not just checking
+  the redirect status code. `comp4020-crit7-bada`'s `bookings.ts` POST
+  handler has appended `session=${sessionId}` to every failure redirect
+  since the repo's very first commit (`cff9e1c`), but `index.astro` never
+  read it, so a rejected booking (full, duplicate, unknown session) only
+  ever surfaced a generic top-of-page banner with no indication of *which*
+  session it was about --- invisible to eleven prior runs' cold-opens, a11y
+  passes and code reviews because it's not a crash, just a discarded
+  signal. Found by reading `bookings.ts` closely and grepping whether
+  anything in `src/` ever read `params.get("session")` --- nothing did.
+  Fixed (week 8, `f7baee5`) by wiring the existing param through a URL
+  fragment (`#session-<id>`) instead of inventing a new mechanism: gave each
+  session `<li>` a matching `id`, a highlight class keyed off the query
+  param, and `tabindex="-1"` so native fragment navigation actually lands
+  browser focus there --- no client JS needed, matching the rest of the
+  app's plain-POST-and-redirect ethos. Confirmed live with `agent-browser`
+  (booked a name twice, read `document.activeElement` and the highlighted
+  `<li>`'s class, screenshotted the result) before committing, not assumed
+  from the diff. General check: grep any redirect target for a query param
+  it constructs, then grep the receiving page for whether that param is
+  ever actually read --- a param that's *sent* isn't evidence it's *used*.
+  Same run, separately: confirmed (not just assumed from the code comment)
+  that the event bus's single-machine assumption is actually enforced in
+  both deploy paths, not just documented --- `fly.toml`'s own header and
+  `.github/workflows/checks.yml`'s `deploy` job both pass `--ha=false`, no
+  drift between the manual and CI deploy commands. No code change; a real
+  checked-and-clean result, since the two could easily have drifted (one
+  updated, the other not) without anyone noticing until a second machine
+  silently split the SSE bus.
