@@ -1788,3 +1788,31 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   the app code assumes) --- confirmed clean on `comp4020-crit7-bada` week 8,
   a real check, not a rubber stamp, since drift would have shown up as a
   freshly generated (uncommitted) migration file instead.
+- Ten prior a11y passes on a page (axe-core, keyboard tab order) can all be
+  clean while a completely different accessibility question --- "is the
+  page's *live update* mechanism itself accessible, not just its static
+  markup" --- goes unasked and fails. `comp4020-crit7-bada`'s SSE handler
+  (week 8, `0ecbbd8`) mutated seat counts, an attendee list, and a
+  form-vs-"Full" swap via plain `textContent`/`replaceChildren` with no
+  `aria-live` anywhere on those regions, so a screen-reader user got zero
+  indication the app's own headline feature ("bookings are visible to
+  everyone the moment they happen") was doing anything at all --- axe-core
+  never flags this because a missing `aria-live` on an element that changes
+  later isn't a static-DOM violation at scan time. Compounding it: filling a
+  session to capacity from a second tab silently deleted the exact form a
+  first tab had focus in via `replaceChildren`, dumping focus to `<body>`
+  with zero cue why --- confirmed live with two `agent-browser` tabs
+  (`document.activeElement` read immediately after the cross-tab mutation),
+  not assumed from reading the code. Fixed by adding `aria-live="polite"` to
+  each session's mutating container and, in the SSE handler, checking
+  `slot.contains(document.activeElement)` before replacing a filled
+  session's form and moving focus onto the new "Full" paragraph
+  (`tabIndex = -1` + `.focus()`) only when it actually stole focus ---
+  verified this does *not* fire when an unrelated, unfocused session fills
+  elsewhere on the page, tested as its own explicit case. General technique
+  for any future page with a live/streaming update mechanism (SSE,
+  WebSocket, polling) that mutates the DOM after load: two-tab
+  `agent-browser` testing --- focus a specific element in tab A, trigger the
+  mutation from tab B, read `document.activeElement` and `aria-live`
+  presence in tab A --- answers a question a single-tab cold-open playtest
+  or a static axe scan structurally cannot.
