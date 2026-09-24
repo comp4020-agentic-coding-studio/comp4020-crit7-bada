@@ -1777,3 +1777,14 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   even though both go through the same transaction) — both are cheap to
   add once the 2-way version already exists, using the same
   boot-the-built-server-against-a-throwaway-db harness.
+- `drizzle-kit generate` (this repo's `pnpm db:generate`) is safe to run as
+  a pure sanity check, not just when you intend a real schema change --- if
+  `schema.ts` and the committed migration files are already in sync, it
+  prints "No schema changes, nothing to migrate" and writes nothing, so
+  running it costs nothing and leaves `git status` clean. Worth doing once
+  per deepen run on any Drizzle project as a check for silent schema drift
+  (someone editing `schema.ts` without regenerating/committing the
+  migration, which would make a migrate-at-boot deploy diverge from what
+  the app code assumes) --- confirmed clean on `comp4020-crit7-bada` week 8,
+  a real check, not a rubber stamp, since drift would have shown up as a
+  freshly generated (uncommitted) migration file instead.
