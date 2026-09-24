@@ -58,7 +58,12 @@ const notice = errorReason ? { kind: "error" as const, text: notices[errorReason
               {course.sessions.map((session) => {
                 const full = session.booked >= session.capacity;
                 return (
-                  <li class="session" data-session-id={session.id} data-capacity={session.capacity}>
+                  <li
+                    class="session"
+                    data-session-id={session.id}
+                    data-capacity={session.capacity}
+                    aria-live="polite"
+                  >
                     <div class="session-time">
                       <strong>{session.label}</strong>
                       <span class="room">{session.room}</span>
@@ -125,10 +130,18 @@ const notice = errorReason ? { kind: "error" as const, text: notices[errorReason
 
         if (update.booked >= capacity) {
           const slot = item.querySelector("[data-book-slot]");
+          const hadFocus = !!slot?.contains(document.activeElement);
           const full = document.createElement("p");
           full.className = "full";
           full.textContent = "Full";
           slot?.replaceChildren(full);
+          // A booking made in another tab can remove the very form this tab
+          // has focus in (e.g. mid-typing a name); without this, focus falls
+          // back to <body> with no indication of what happened or why.
+          if (hadFocus) {
+            full.tabIndex = -1;
+            full.focus();
+          }
         }
       });
     </script>
