@@ -1965,3 +1965,75 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   bypasses drizzle's own migration-tracking table and produces a false
   "table already exists" failure that has nothing to do with the migration
   itself.
+- The case-fold bug family on `comp4020-crit7-bada` went a third layer deep:
+  after ASCII case (`dc0d99a`) and non-ASCII case (`36417f9`), a tenth run
+  (week 8) checked Unicode normalization form specifically because a
+  previous run's own hand-off named it as the next thing to try --- and it
+  was real. "Café" typed as a precomposed `é` (U+00E9) vs. the same glyph
+  typed as `e` + a combining acute accent (U+0301) are visually identical
+  but byte-distinct strings until normalized, so `.trim().toLowerCase()`
+  alone let them double-book, on both the SQL-backing `name_key()` function
+  and the app-level pre-check, the same shape as both prior layers. Fixed
+  by adding `.normalize("NFC")` before the existing trim/lowercase on both
+  sides (`9cf3082`). No migration needed --- `pnpm db:generate` reported "no
+  schema changes," confirming a `mode: "virtual"` generated column
+  re-evaluates its expression against whatever function is registered at
+  read time, so a pure JS-function change never touches the schema/migration
+  layer at all. Worth treating this bug family as probably exhausted after
+  three layers (ASCII case, non-ASCII case, normalization form) --- a further
+  layer (grapheme-cluster equivalence, ZWJ tricks) is a much longer tail for
+  much less real-world relevance to an ANU population, and three consecutive
+  deepen runs drilling the same bug family is itself a signal to rotate the
+  lens rather than confirmation to keep drilling.
+- Retyping the same accented character (e.g. "Café") across different tool
+  parameters within one session can silently produce different underlying
+  Unicode byte sequences (NFC vs NFD) --- `Edit`'s exact-string-match then
+  fails with "string not found" even though the `old_string` looks byte-
+  identical to the file's content on a `Read`. Confirmed on
+  `comp4020-crit7-bada` writing the NFC/NFD regression test itself, which is
+  exactly the kind of file where this bites hardest since the whole test's
+  point is having two byte-distinct-but-visually-identical strings in the
+  same file. Fix: don't retry the same literal-character `Edit` call hoping
+  it resolves --- write the intended text using explicit `\uXXXX` escape
+  sequences instead (e.g. `"Café"` / `"Café"`), splicing them in
+  with a `node -e` script if `Edit`'s own text argument is what keeps
+  drifting. Escapes are unambiguous in a way that typing the actual glyph
+  never is once a session has already produced both normalization forms of
+  it once.
+- A new test that fully drains a session for its own assertion (found via
+  `findSessionWithSpareCapacity(n)`, then a filler loop to leave it exactly
+  full) silently competes with every other test in the same file for the
+  same finite pool of seed-data seats --- inserting one *mid-file* can starve
+  a *later*, unrelated test that also calls `findSessionWithSpareCapacity()`
+  and assumes there's still something left. Hit on `comp4020-crit7-bada`
+  (week 8) adding the NFC/NFD test between two existing tests: it broke a
+  downstream race test with "expected [] to have a length of 1 but got +0",
+  nothing to do with Unicode at all. Diagnosed with a temporary `afterEach`
+  hook logging every session's booked/capacity state after each test, run
+  with `pnpm exec vitest run --reporter=verbose` (the default reporter
+  swallows `console` output for passing tests, so verbose is required to see
+  the trace at all) --- this reconstructs exactly how the suite's total seat
+  budget gets consumed test-by-test and pinpoints which test tipped it into
+  deficit. Fixed by repositioning the new test near the end of the file
+  (after the last test that assumes fresh/zero-booked state) and dropping
+  its own filler loop entirely, rather than touching seed data or weakening
+  any assertion. General check for any spec suite sharing one seeded
+  database across sequential tests via a "find one with spare capacity"
+  helper: a new fully-draining test's position in file order matters as
+  much as its own logic --- verify with the `afterEach`-plus-`--reporter=
+  verbose` trace before assuming a failure introduced elsewhere in the same
+  run is unrelated to a new test just added nearby.
+- A schema/function change to a duplicate-key check that can only ever make
+  MORE strings collide (never fewer) --- like tightening a case-fold or
+  normalization rule --- carries no data-migration risk against existing
+  rows: SQLite doesn't retroactively re-validate already-stored rows against
+  a changed generated-column expression, the unique constraint only fires at
+  INSERT time against rows already in the table. So the standard "check the
+  production volume before deploying a duplicate-constraint change" ritual
+  documented elsewhere in this file is precautionary, not load-bearing, for
+  this specific class of change (unlike a genuine schema/column-shape
+  change) --- worth still doing it once as cheap due diligence
+  (`comp4020-crit7-bada` week 8, confirmed zero real bookings again before
+  the normalization fix went out), but not worth treating a skip of it as a
+  real risk if time is tight and the fix is provably monotonic in what it
+  rejects.
