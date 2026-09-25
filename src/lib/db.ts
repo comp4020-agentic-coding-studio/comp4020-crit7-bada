@@ -21,7 +21,7 @@ client.pragma("journal_mode = WAL");
 // future boot, since a generated column re-evaluates its expression against
 // whatever function is registered on the connection that's reading it.
 client.function("name_key", { deterministic: true }, (name: unknown) =>
-  String(name).trim().toLowerCase(),
+  String(name).normalize("NFC").trim().toLowerCase(),
 );
 
 export const db = drizzle(client);
@@ -121,7 +121,10 @@ export function bookSession(sessionId: number, personName: string): BookingResul
       .select()
       .from(bookings)
       .where(
-        and(eq(bookings.sessionId, sessionId), eq(bookings.personNameKey, personName.trim().toLowerCase())),
+        and(
+          eq(bookings.sessionId, sessionId),
+          eq(bookings.personNameKey, personName.normalize("NFC").trim().toLowerCase()),
+        ),
       )
       .get();
     if (already) return { ok: false, reason: "duplicate" } as const;

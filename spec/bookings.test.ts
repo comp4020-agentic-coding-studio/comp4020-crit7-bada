@@ -189,6 +189,24 @@ describe("booking a seat", () => {
     expect(await page.text()).toContain(`${capacity} / ${capacity} booked`);
   });
 
+  it("rejects the same name typed with a different Unicode normalization form", async () => {
+    // "Café" can be encoded as a precomposed \u00e9 or as e + a combining
+    // acute accent (\u0301) — visually identical on screen, but two different
+    // strings until normalized, so .toLowerCase() alone (see name_key() in
+    // db.ts) would let them double-book.
+    const nfcName = "Caf\u00e9";
+    const nfdName = "Cafe\u0301";
+
+    const { id } = await findSessionWithSpareCapacity();
+    const nfc = await book(id, nfcName);
+    expect(nfc.status).toBe(303);
+    expect(nfc.headers.get("location")).toBe(`/?booked=${id}`);
+
+    const nfd = await book(id, nfdName);
+    expect(nfd.status).toBe(303);
+    expect(nfd.headers.get("location")).toBe(`/?error=duplicate&session=${id}#session-${id}`);
+  });
+
   it("resolves a same-name double-submit race to exactly one booking", async () => {
     // a double/triple-click submit sends the same person's name in several
     // concurrent requests — this is the unique-constraint side of the

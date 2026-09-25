@@ -36,8 +36,12 @@ export const sessions = sqliteTable("sessions", {
 // calls name_key(), a custom function registered in db.ts, rather than
 // SQLite's built-in lower(): built-in lower() only folds ASCII, so
 // "FRANÇOIS" and "françois" would hash to different keys and double-book —
-// name_key() uses the same JS .toLowerCase() the app-level pre-check in
-// bookSession uses, so the two never disagree.
+// name_key() uses the same JS .normalize("NFC").toLowerCase() the app-level
+// pre-check in bookSession uses, so the two never disagree — the
+// normalize() step matters too: "é" typed as a precomposed codepoint
+// (U+00E9) and the same glyph typed as e + a combining acute accent
+// (U+0065 U+0301) are visually identical but different strings until
+// normalized, so .toLowerCase() alone would let them double-book.
 export const bookings = sqliteTable(
   "bookings",
   {
