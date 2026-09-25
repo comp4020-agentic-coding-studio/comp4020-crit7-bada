@@ -451,6 +451,74 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   any future deliverable, only falling back to the manual route if `a11y`
   isn't available or doesn't cover what's needed (e.g. scoping to one
   `--selector`, or `--tags` for a specific WCAG level).
+- A ninth `comp4020-crit7-bada` run (week 8, `36417f9`) found a second layer
+  under the case-fold duplicate-name fix (`dc0d99a`): SQLite's built-in
+  `lower()` only folds ASCII, so the generated `person_name_key` column and
+  the app-level JS `.trim().toLowerCase()` pre-check in `bookSession`
+  quietly disagreed on any non-ASCII name — booking "FRANÇOIS" then
+  "françois" into the same capacity-2 session succeeded as two different
+  people both at the app-level pre-check *and* the unique index itself
+  (each side folds the accented character differently, so neither ever sees
+  a collision), overbooking a session the schema's own comment says can
+  never overbook. Confirmed with a vitest probe calling `bookSession`
+  directly before touching the schema, the same escalation-order as the
+  ASCII case-fold bug: verify empirically before design work. Real-world
+  relevance for an ANU-context app: French/Vietnamese/Spanish/Nordic names
+  with diacritics are common among the actual student population this app
+  models. Fixed by registering a custom deterministic SQL function
+  (`client.function("name_key", { deterministic: true }, (name) =>
+  String(name).trim().toLowerCase())`, better-sqlite3's API) and pointing
+  the generated column at it instead of built-in `lower(trim(...))`, so both
+  sides fold case identically by construction rather than by coincidence.
+  General lesson for any schema mixing a SQL-computed key with an
+  app-level pre-check meant to mirror it: don't assume a built-in SQL string
+  function agrees with the host language's equivalent for non-ASCII input —
+  verify with a throwaway probe (`db.prepare("select lower('FRANÇOIS')")`)
+  before trusting the two stay in sync, and if they don't, back the
+  generated column with a custom function built from the *same* host-language
+  call the app already makes, rather than hand-porting Unicode case-folding
+  rules into SQL. Second, sharper gotcha hit generating the migration:
+  `drizzle-kit generate` for a change to a generated column's *expression*
+  (not just its mode) emitted `ALTER TABLE ... DROP COLUMN person_name_key`
+  before dropping the unique index that references that column — SQLite
+  rejects this outright (`error in index ... after drop column: no such
+  column`), confirmed by booting the built server against the migration
+  and getting a 500 on every request, not a boot-time crash (astro's build
+  succeeds; the migration only runs lazily on first `getModuleForRoute`).
+  Fixed by hand-editing the generated migration to `DROP INDEX` first, then
+  `DROP COLUMN`/`ADD ... GENERATED`, then `CREATE UNIQUE INDEX` again —
+  drizzle-kit does not order these safely on its own for SQLite, so any
+  future change to a *generated* column's expression on a column that's
+  also indexed needs this same manual reordering, not just the earlier
+  `stored`-vs-`virtual` mode gotcha already in this file. Verified the real
+  upgrade path end to end before deploying: booted a throwaway DB through
+  the *old* migration set, booked a real "FRANÇOIS" row via the actual
+  built server's `/api/bookings` POST endpoint (needs an `Origin` header
+  matching the request URL — Astro's CSRF check 403s a bare `curl` POST
+  with none), then rebooted the *new* build against that same database
+  file and confirmed the migration applied cleanly and a same-person
+  differently-cased booking now correctly redirects to
+  `?error=duplicate`. Also re-verified live against production before
+  deploying (`flyctl machine start` + `flyctl ssh console` running a
+  `node -e` one-liner against `better-sqlite3`, same technique as the
+  previous run) that the volume still held zero real bookings, so the new
+  index couldn't conflict with anything already on disk. One test-authoring
+  gotcha worth its own line: this repo's `spec/bookings.test.ts` tests run
+  sequentially against one shared seeded database and several tests assume
+  whatever session `findSessionWithSpareCapacity()` returns is otherwise
+  *empty* (computing filler counts as `capacity - 1`, not
+  `capacity - booked - 1`) — a new test inserted earlier in the file that
+  leaves its own session partially booked (rather than fully filling or
+  fully avoiding it) silently breaks a *later* test's arithmetic with no
+  connection to what that later test is actually about, surfacing as a
+  confusing "expected 1 booking slot, got 0" failure in a next-door race
+  test. Fixed by making the new test fill any seats it didn't use itself
+  before returning, matching the existing convention. General check for
+  this style of shared-server spec suite: any new test that touches a
+  session found via a shared "find one with spare capacity" helper must
+  leave that session either fully consumed or account for its own
+  contribution in a `booked`-aware way — never assume a later test's naïve
+  `capacity - 1` filler math is someone else's problem to keep working.
 
 ## Repo-independent lessons
 
