@@ -29,6 +29,11 @@ export const sessions = sqliteTable("sessions", {
 // One booking is one person's seat in one session. The unique constraint is
 // the load-bearing part: it's what stops the same person double-booking the
 // same session, enforced by SQLite itself rather than trusted to app logic.
+// It's keyed on personNameKey (a SQLite-computed lower(trim(...)) of the
+// typed name), not the raw personName, so "Ada" and "ada" collide as the same
+// person instead of quietly bypassing the one-seat-per-person promise by
+// varying capitalisation — the stored personName keeps the casing they typed
+// for display.
 export const bookings = sqliteTable(
   "bookings",
   {
@@ -37,11 +42,14 @@ export const bookings = sqliteTable(
       .notNull()
       .references(() => sessions.id),
     personName: text("person_name").notNull(),
+    personNameKey: text("person_name_key").generatedAlwaysAs(sql`lower(trim(person_name))`, {
+      mode: "virtual",
+    }),
     createdAt: text("created_at")
       .notNull()
       .default(sql`(datetime('now'))`),
   },
-  (table) => [unique().on(table.sessionId, table.personName)],
+  (table) => [unique().on(table.sessionId, table.personNameKey)],
 );
 
 export type Course = typeof courses.$inferSelect;

@@ -112,7 +112,9 @@ export function bookSession(sessionId: number, personName: string): BookingResul
     const already = tx
       .select()
       .from(bookings)
-      .where(and(eq(bookings.sessionId, sessionId), eq(bookings.personName, personName)))
+      .where(
+        and(eq(bookings.sessionId, sessionId), eq(bookings.personNameKey, personName.trim().toLowerCase())),
+      )
       .get();
     if (already) return { ok: false, reason: "duplicate" } as const;
 

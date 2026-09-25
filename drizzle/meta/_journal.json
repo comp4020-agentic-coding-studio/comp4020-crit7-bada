@@ -8,6 +8,13 @@
       "when": 1789968125960,
       "tag": "0000_broken_dakota_north",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790312898240,
+      "tag": "0001_clammy_baron_strucker",
+      "breakpoints": true
     }
   ]
 }

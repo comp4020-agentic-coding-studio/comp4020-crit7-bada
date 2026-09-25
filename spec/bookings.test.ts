@@ -66,6 +66,16 @@ describe("booking a seat", () => {
     expect(res.headers.get("location")).toBe(`/?error=duplicate&session=${sessionId}#session-${sessionId}`);
   });
 
+  it("rejects the same name booked with different capitalisation", async () => {
+    // the unique constraint is keyed on lower(trim(person_name)), not the raw
+    // typed name — "ADA" has to collide with the "Ada" booked above, or a
+    // trivial capitalisation change bypasses the app's one-seat-per-person
+    // promise.
+    const res = await book(sessionId, "ADA");
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe(`/?error=duplicate&session=${sessionId}#session-${sessionId}`);
+  });
+
   it("refuses a booking once every seat is taken", async () => {
     // fill whatever's left, then one more should bounce
     for (let n = 1; n < capacity; n++) {
