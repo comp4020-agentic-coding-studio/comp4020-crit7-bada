@@ -1847,3 +1847,53 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   checked-and-clean result, since the two could easily have drifted (one
   updated, the other not) without anyone noticing until a second machine
   silently split the SSE bus.
+- A stated app contract is worth checking literally, not just testing the
+  behaviour it implies --- `comp4020-crit7-bada`'s README says duplicate
+  prevention is "a unique constraint on (session_id, person_name), enforced
+  by the database," but the constraint was on the raw typed name, so
+  booking "Ada" then "ADA" into the same session succeeded as two separate
+  people. Twelve prior runs' concurrency races, cold-opens and a11y passes
+  never caught this because it's not a crash or a visible break, and every
+  existing test only ever repeated the identical string. Found by reading
+  the schema against the README's own claim, not by another playtest. Fixed
+  (week 8) with a SQLite virtual generated column
+  (`lower(trim(person_name))`) carrying the unique index, keeping the raw
+  `personName` column for display, plus the matching change to the
+  app-level duplicate check inside `bookSession`. Real drizzle-kit/SQLite
+  gotcha hit along the way: `generatedAlwaysAs(..., { mode: "stored" })`
+  makes `drizzle-kit generate` print a `[Warning]` (SQLite can't
+  `ALTER TABLE ADD COLUMN` a STORED generated column, only a VIRTUAL one)
+  and then silently emit a broken migration --- it drops the old unique
+  index and creates the new one, but never emits the `ADD COLUMN` statement
+  at all, so applying it to any already-migrated database throws "no such
+  column" outright. `mode: "virtual"` instead generates a working
+  `ALTER TABLE ... ADD ... GENERATED ALWAYS AS (...) VIRTUAL` statement, and
+  a `CREATE UNIQUE INDEX` on a virtual generated column is valid SQLite (the
+  restriction is only on an inline `UNIQUE`/`PRIMARY KEY` table constraint,
+  which is not what drizzle's `unique().on(...)` compiles to anyway).
+  Verified the upgrade path for real, not just against a fresh database:
+  bootstrapped a throwaway DB through the *old* migration set to get
+  drizzle's own `__drizzle_migrations` bookkeeping table populated
+  correctly (seeding by hand with raw SQL skips that table and produces a
+  misleading "table already exists" failure that looks like a migration
+  bug but is actually just an artefact of the test harness), inserted a
+  real booking row, then ran the *new* migration set on top and confirmed
+  it applied cleanly and the generated column backfilled correctly for the
+  pre-existing row. Before deploying, also queried the actual production
+  volume over `flyctl ssh console` (needed `flyctl machine start` first —
+  the machine was auto-stopped — and a `node -e` one-liner against
+  `better-sqlite3`, since the deployed image has no `sqlite3` binary) to
+  confirm zero real bookings existed there, so the new constraint couldn't
+  conflict with anything already on disk. Deployed, boot logs clean, no
+  test booking left on the live volume (checked the page loads correctly
+  without ever submitting the form against production, matching the
+  standing rule elsewhere in this file about not leaving junk data on a
+  volume with no delete/cancel). General technique: any future
+  `generatedAlwaysAs` column meant to be added to an *existing* SQLite
+  table via a later migration (as opposed to being present in the very
+  first `CREATE TABLE`) must use `mode: "virtual"`, never `"stored"` --- and
+  always test the upgrade path against a database that went through the
+  real prior migration set, not one seeded by hand, since hand-seeding
+  bypasses drizzle's own migration-tracking table and produces a false
+  "table already exists" failure that has nothing to do with the migration
+  itself.

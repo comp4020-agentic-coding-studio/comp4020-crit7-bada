@@ -1,68 +1,83 @@
 # now
 
-## State as of this run (2026-09-25, 77.5 h to cutoff, `comp4020-crit7-bada`) --- DEEPEN
+## State as of this run (2026-09-25, 70.5 h to cutoff, `comp4020-crit7-bada`) --- DEEPEN
 
-Twelfth run. Re-fetched crit 07 source: unchanged content (title, spec, body
-verbatim); the only page addition since the last read is a warning box about
-updating the students' own `comp4020` Claude Code plugin — not applicable,
-no such plugin in this agent's skill list.
+Thirteenth run. Re-fetched crit 07 source: unchanged (same title/body/related
+as every prior read; the plugin-update warning box still doesn't apply --- no
+`comp4020` plugin in this agent's skill list).
 
-Found a genuinely new angle rather than repeating a prior thread: read
-`src/pages/api/bookings.ts` closely and noticed the failure redirect has
-appended a `session=${sessionId}` query param since the very first commit
-(`cff9e1c`), but `index.astro` never read it — eleven prior runs' cold-opens,
-a11y passes, and code reviews all missed this because it's not a crash or a
-visible break, just a discarded signal. The practical effect: a rejected
-booking (full, duplicate, unknown session) only ever surfaced a generic
-top-of-page banner, leaving a user hunting across several sessions for which
-one it was about.
+Found a genuinely new angle by checking the README's own stated contract
+literally rather than testing behaviour: README says duplicate prevention is
+"a unique constraint on (session_id, person_name)," but the constraint was on
+the raw typed name, so "Ada" then "ADA" into the same session booked as two
+different people --- trivially bypassing the app's whole one-seat-per-person
+promise. Twelve prior runs' concurrency races, cold-opens, and a11y passes
+never caught this.
 
-Fixed by actually wiring the param through (`f7baee5`):
+Fixed with a schema change (`dc0d99a`):
 
-- the failure redirect now appends a `#session-<id>` URL fragment
-  alongside the existing query param
-- each session `<li>` has a matching `id`, a `session-error` highlight
-  class when it's the one named by `?session=`, and `tabindex="-1"` so
-  native fragment navigation actually lands browser focus there (no client
-  JS needed — same "plain POST + redirect" ethos as the rest of the app)
-- confirmed live with `agent-browser`: booked "Ada" into a session, then
-  submitted the identical name again — the resulting page scrolled straight
-  to that session, highlighted it red, and browser focus landed on the `<li>`
-  itself (`document.activeElement` == `#session-3`), screenshot confirmed
-  visually before committing
-- updated the six existing redirect-location assertions in
-  `spec/bookings.test.ts` to expect the new fragment; `pnpm check` still
-  34/34, typecheck clean
+- `bookings.personNameKey`, a SQLite virtual generated column
+  (`lower(trim(person_name))`), carries the unique index instead of the raw
+  `personName` column, which stays as-is for display
+- `bookSession`'s app-level duplicate check in `src/lib/db.ts` now compares
+  against the same normalized form
+- added a regression test in `spec/bookings.test.ts` booking "ADA" right
+  after "Ada" and expecting the duplicate rejection
 
-Also did a real (not manufactured) check that came back clean, worth noting
-so a future run doesn't re-do it: the event-bus code comment says the app
-"only works because it runs on exactly one machine" — verified this is
-actually enforced, not just documented, in both deploy paths:
-`fly.toml`'s own header names `--ha=false` for the manual deploy, and
-`.github/workflows/checks.yml`'s `deploy` job passes the identical flag.
-No drift between the two. No code change.
+Real gotcha hit generating the migration, now in `MEMORY.md`: a `stored`
+generated column can't be added to an existing table via `ALTER TABLE` in
+SQLite, and `drizzle-kit generate` silently produces a broken migration for
+it (prints a warning, then omits the `ADD COLUMN` statement entirely) ---
+`mode: "virtual"` is the fix, and a `CREATE UNIQUE INDEX` on a virtual
+generated column is valid SQLite.
+
+Verified thoroughly before shipping, not just "tests pass":
+
+- rebuilt a throwaway DB through the *old* migration set first (so drizzle's
+  own migration-tracking table is populated the real way, not hand-seeded),
+  inserted a real booking row, then applied the *new* migration set on top
+  and confirmed it upgrades cleanly with the generated column backfilling
+  correctly for the pre-existing row
+- queried the actual deployed Fly volume directly (`flyctl machine start`,
+  then `flyctl ssh console` running a `node -e` one-liner against
+  `better-sqlite3` — no `sqlite3` binary in the image) and confirmed
+  production currently holds zero real bookings, so the new constraint
+  couldn't conflict with anything already on disk
+- `pnpm check` 35/35 (was 34), typecheck clean
+- confirmed live against a local dev server with `agent-browser`: booked
+  "Grace" then "GRACE" into the same session, got the same
+  highlight/scroll/focus duplicate-rejection UI as any other duplicate ---
+  screenshotted before committing
+- shut the dev server down by PID afterwards and confirmed the port was
+  actually free (not just trusting job control)
 
 Pushed and deployed (`flyctl deploy --remote-only --ha=false
--a comp4020-crit7-bada`); live URL confirmed 200 and serving the new
-`id="session-N"` markup via `curl`.
+-a comp4020-crit7-bada`). Boot logs clean (migration applied with no error),
+live URL confirmed 200. Did **not** submit the booking form against
+production itself — only checked the page loads — since the app still has no
+delete/cancel and a test booking there would be permanent junk, per the
+standing rule already in `MEMORY.md`.
 
 ## Single most important next action
 
-Still not the finishing run (77.5h at this run's start). This is now a
-fifth strong thread alongside concurrency (`719f90b`, `faaa85e`), SSE-resync
-(`066c66d`, verified under a real Fly redeploy), the RST-disconnect edge
-case, and the live-update accessibility/focus fix (`0ecbbd8`). Next deepen
-run's options, in order: (1) if a genuinely new angle occurs to it, take
-it — the pattern that's kept working across a dozen runs is reading the
-actual code/config closely rather than repeating an already-answered
-cold-open or a11y pass; (2) otherwise start drafting `PROCESS.md`/
-reflection language in scratch form (not the real files yet); (3) once told
-this is the last run, write the real `PROCESS.md` naming the strongest 2-3
-threads and `reflections/crit-7.md` headed "Build the ANU system you wish
-existed" (the source's title, never a week number) — the live-update
-accessibility/focus fix (`0ecbbd8`) is still the strongest single
-reflection-breakthrough candidate since it ties directly to the app's own
-stated selling point, with this run's dead-query-param fix as a good
-secondary example of the same "read what the code already sends, not just
-what the UI shows" instinct. Do not write the reflection file before that
-run.
+Still not the finishing run (70.5h at this run's start). This is now a sixth
+strong thread alongside concurrency (`719f90b`, `faaa85e`), SSE-resync
+(`066c66d`), the RST-disconnect edge case, the live-update
+accessibility/focus fix (`0ecbbd8`), and the dead-query-param fix
+(`f7baee5`). Next deepen run's options, in order: (1) if a genuinely new
+angle occurs to it, take it --- the pattern that keeps working is checking
+the app's own stated claims (README, code comments) against what the code
+actually does, not just repeating an already-answered cold-open or a11y
+pass; (2) otherwise start drafting `PROCESS.md`/reflection language in
+scratch form (not the real files yet); (3) once told this is the last run,
+write the real `PROCESS.md` naming the strongest 2--3 threads and
+`reflections/crit-7.md` headed "Build the ANU system you wish existed" (the
+source's title, never a week number). Candidates for the reflection
+breakthrough, in descending order of fit: the live-update
+accessibility/focus fix (`0ecbbd8`, ties directly to the app's own stated
+selling point) and this run's case-folded-duplicate fix (a stated contract
+that was silently broken since the very first commit, only found by reading
+the README against the schema rather than testing behaviour) are both
+strong candidates now --- worth deciding between them explicitly at the
+finishing run rather than defaulting to whichever was found first. Do not
+write the reflection file before that run.
