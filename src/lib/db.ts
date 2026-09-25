@@ -16,6 +16,14 @@ mkdirSync(dirname(path), { recursive: true });
 const client = new Database(path);
 client.pragma("journal_mode = WAL");
 
+// Backs bookings.personNameKey (see schema.ts): must be registered before
+// migrate() runs the CREATE/ALTER that references it, and again on every
+// future boot, since a generated column re-evaluates its expression against
+// whatever function is registered on the connection that's reading it.
+client.function("name_key", { deterministic: true }, (name: unknown) =>
+  String(name).trim().toLowerCase(),
+);
+
 export const db = drizzle(client);
 
 // Migrations run at boot, on whatever machine holds the volume — the

@@ -29,11 +29,15 @@ export const sessions = sqliteTable("sessions", {
 // One booking is one person's seat in one session. The unique constraint is
 // the load-bearing part: it's what stops the same person double-booking the
 // same session, enforced by SQLite itself rather than trusted to app logic.
-// It's keyed on personNameKey (a SQLite-computed lower(trim(...)) of the
-// typed name), not the raw personName, so "Ada" and "ada" collide as the same
-// person instead of quietly bypassing the one-seat-per-person promise by
-// varying capitalisation — the stored personName keeps the casing they typed
-// for display.
+// It's keyed on personNameKey, not the raw personName, so "Ada" and "ada"
+// collide as the same person instead of quietly bypassing the
+// one-seat-per-person promise by varying capitalisation — the stored
+// personName keeps the casing they typed for display. The generated column
+// calls name_key(), a custom function registered in db.ts, rather than
+// SQLite's built-in lower(): built-in lower() only folds ASCII, so
+// "FRANÇOIS" and "françois" would hash to different keys and double-book —
+// name_key() uses the same JS .toLowerCase() the app-level pre-check in
+// bookSession uses, so the two never disagree.
 export const bookings = sqliteTable(
   "bookings",
   {
@@ -42,7 +46,7 @@ export const bookings = sqliteTable(
       .notNull()
       .references(() => sessions.id),
     personName: text("person_name").notNull(),
-    personNameKey: text("person_name_key").generatedAlwaysAs(sql`lower(trim(person_name))`, {
+    personNameKey: text("person_name_key").generatedAlwaysAs(sql`name_key(person_name)`, {
       mode: "virtual",
     }),
     createdAt: text("created_at")

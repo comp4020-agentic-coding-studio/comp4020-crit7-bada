@@ -19,7 +19,9 @@ const book = (sessionId: number, personName: string) =>
     redirect: "manual",
   });
 
-async function findSessionWithSpareCapacity(): Promise<{ id: number; capacity: number; booked: number }> {
+async function findSessionWithSpareCapacity(
+  minSpare = 1,
+): Promise<{ id: number; capacity: number; booked: number }> {
   const res = await fetch(baseUrl);
   const doc = new JSDOM(await res.text()).window.document;
   const sessions = [...doc.querySelectorAll("[data-session-id]")]
@@ -32,10 +34,10 @@ async function findSessionWithSpareCapacity(): Promise<{ id: number; capacity: n
         booked: booked ?? 0,
       };
     })
-    .filter((s) => s.booked < s.capacity)
+    .filter((s) => s.capacity - s.booked >= minSpare)
     .sort((a, b) => a.capacity - b.capacity);
   const smallest = sessions[0];
-  if (!smallest) throw new Error("every seeded session is already full");
+  if (!smallest) throw new Error(`no session has ${minSpare} spare seat(s) left`);
   return smallest;
 }
 
@@ -74,6 +76,29 @@ describe("booking a seat", () => {
     const res = await book(sessionId, "ADA");
     expect(res.status).toBe(303);
     expect(res.headers.get("location")).toBe(`/?error=duplicate&session=${sessionId}#session-${sessionId}`);
+  });
+
+  it("rejects the same name booked with a differently-cased accent", async () => {
+    // SQLite's built-in lower() only folds ASCII, so a naive
+    // lower(trim(person_name)) key would let "FRANÇOIS" and "françois" book
+    // as two different people — the generated column calls the custom
+    // name_key() function instead (see schema.ts), which folds case the same
+    // way the app-level pre-check does.
+    const { id, capacity, booked } = await findSessionWithSpareCapacity(2);
+    const first = await book(id, "FRANÇOIS");
+    expect(first.status).toBe(303);
+    expect(first.headers.get("location")).toBe(`/?booked=${id}`);
+
+    const second = await book(id, "françois");
+    expect(second.status).toBe(303);
+    expect(second.headers.get("location")).toBe(`/?error=duplicate&session=${id}#session-${id}`);
+
+    // fill any remaining seats so this session reads as full to every later
+    // test's own findSessionWithSpareCapacity() call, the same way the
+    // capitalisation test above leaves its session fully booked
+    for (let n = 1; n <= capacity - booked - 1; n++) {
+      await book(id, `Accent filler ${n}`);
+    }
   });
 
   it("refuses a booking once every seat is taken", async () => {
