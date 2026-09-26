@@ -594,6 +594,23 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   file has a real exception — verify against a fresh local server instead,
   and settle for confirming production's *existing* state is unperturbed by
   the deploy itself.
+- The finishing run on `comp4020-crit7-bada` (week 8, `24765ba`) caught a
+  case the standing "reflection heading drift"/"process-account drift"
+  lessons in this file predict but hadn't yet turned up on this deliverable:
+  a project's own README asserted "a unique constraint on `(session_id,
+  person_name)`," a claim that was true when first written but had been
+  silently overtaken by three later deepen-run schema fixes
+  (`dc0d99a`/`36417f9`/`9cf3082`) that moved the real constraint onto a
+  generated, case-folded, normalized `person_name_key` column --- nothing
+  broke and no check caught it, since the README's prose isn't executable.
+  Found only by rereading the README's own bulleted claims against the
+  current `schema.ts` at the finishing pass, the same discipline already
+  used for doctrine-vs-reflection-heading drift. General check: at the
+  finishing run on any deliverable whose README/spec makes a specific claim
+  about a schema/constraint/algorithm, diff that claim against the current
+  implementation one more time before shipping --- a claim written accurately
+  early in a multi-week deepen doesn't stay accurate for free just because
+  nothing failed.
 
 ## Repo-independent lessons
 
