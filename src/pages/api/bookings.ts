@@ -13,8 +13,15 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   const form = await request.formData();
   const sessionId = Number(form.get("sessionId"));
   const personName = String(form.get("personName") ?? "").trim().slice(0, 80);
+  // .trim() only strips whitespace, not zero-width/format characters
+  // (U+200B and friends, Unicode category Cf) — a name made up of only
+  // those reads as non-empty to `!personName` and to a real browser's own
+  // `required` validation (which just checks value !== ""), so without this
+  // a seat could be taken under a name that displays as nothing at all in
+  // the attendee list.
+  const hasVisibleChar = /[^\s\p{Cf}]/u.test(personName);
 
-  if (!Number.isInteger(sessionId) || !personName) {
+  if (!Number.isInteger(sessionId) || !personName || !hasVisibleChar) {
     return redirect("/?error=invalid", 303);
   }
 

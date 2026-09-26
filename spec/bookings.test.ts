@@ -134,6 +134,34 @@ describe("booking a seat", () => {
     expect(await page.text()).toContain(`${raceCapacity} / ${raceCapacity} booked`);
   });
 
+  it("rejects a blank name", async () => {
+    const { id } = await findSessionWithSpareCapacity();
+    const res = await book(id, "   ");
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("/?error=invalid");
+  });
+
+  it("rejects a name made only of invisible Unicode characters", async () => {
+    // U+200B (zero-width space) isn't whitespace as far as .trim() or a
+    // browser's own `required` validation is concerned, so a name of only
+    // invisible characters reads as "present" to both — this would otherwise
+    // take a real seat under a name nobody can see in the attendee list.
+    const { id } = await findSessionWithSpareCapacity();
+    const res = await book(id, "​​​");
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe("/?error=invalid");
+
+    const page = await fetch(baseUrl);
+    expect(await page.text()).not.toContain(`1 / `);
+  });
+
+  it("accepts a name that merely contains an invisible character alongside real ones", async () => {
+    const { id } = await findSessionWithSpareCapacity();
+    const res = await book(id, "Jo​hn");
+    expect(res.status).toBe(303);
+    expect(res.headers.get("location")).toBe(`/?booked=${id}`);
+  });
+
   it("rejects a booking against a session id that doesn't exist", async () => {
     const res = await book(999_999, "Ghost");
     expect(res.status).toBe(303);
