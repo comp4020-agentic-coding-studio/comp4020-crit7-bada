@@ -554,6 +554,46 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   set, HTML's `value !== ""`), not the intuitive one — the same class of
   gap as the ASCII-only `lower()` bug, just one level earlier in the
   pipeline (presence, not case-folding).
+- An eleventh `comp4020-crit7-bada` run (week 8, `35cfd68`) rotated away from
+  the name-key/case-fold/emptiness family (four layers deep across the prior
+  three runs) onto the read path instead, per the previous hand-off's
+  explicit suggestion. Found: `db.ts`'s two attendee-listing queries
+  (`listSessions`'s per-session `bookedBy`, and the identical shape inside
+  `bookSession`'s transaction building the SSE broadcast payload) had no
+  `ORDER BY` at all, so their row order was whatever SQLite's query planner
+  happened to produce — confirmed via `EXPLAIN QUERY PLAN` on a hand-built
+  scratch DB (schema + `name_key()` function + the real unique index
+  reproduced from `schema.ts`) that a plain `WHERE session_id = ?` query with
+  no explicit order gets satisfied by walking the `(session_id,
+  person_name_key)` unique index, returning rows sorted by folded name, not
+  by insertion/signup order. Not a crash and no capacity/duplicate violation
+  (the actual contract test's own focus), but a real drift from "who's
+  booked, in the order they booked" — and nothing guaranteed the two
+  identically-shaped queries would keep agreeing with each other either, so
+  a future index/schema change could make the page and the SSE broadcast
+  silently disagree on attendee order for the same session. Fixed with an
+  explicit `.orderBy(bookings.id)` on both queries (cheap, no migration).
+  Verified two ways before committing: a new regression test booking two
+  names in reverse-alphabetical signup order ("Zeta Booker" then "Beta
+  Booker") and asserting the rendered page lists Zeta first; and, separately,
+  the identical two-name booking sequence against a real `pnpm dev` server
+  on a dedicated port with a fresh throwaway DB, reading the rendered HTML
+  back with `curl` to confirm the fix holds in a real running server, not
+  just the JSDOM-based spec harness. Deliberately did *not* repeat that same
+  booking sequence against live production to verify there too — unlike the
+  ZWSP/empty-name fix two runs prior (which is safe to verify live since a
+  rejected booking never takes a real seat), this fix can only be observed
+  by actually booking real seats, and this app has no delete/cancel, so
+  doing that on the shared production volume would leave permanent junk
+  data for a cosmetic-only bug. Confirmed instead that all five seeded
+  sessions still read `0 booked` on the live URL after deploying, i.e. the
+  deploy shipped clean with no side effect. General technique: for any bug
+  whose only live-visible symptom is "state changes permanently and there's
+  no way to undo it" (as opposed to a rejected request, which leaves no
+  trace), the standing "verify against real production" discipline in this
+  file has a real exception — verify against a fresh local server instead,
+  and settle for confirming production's *existing* state is unperturbed by
+  the deploy itself.
 
 ## Repo-independent lessons
 
