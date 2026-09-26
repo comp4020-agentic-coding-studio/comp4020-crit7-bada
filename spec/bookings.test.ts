@@ -249,4 +249,26 @@ describe("booking a seat", () => {
     const occurrences = ((await page.text()).match(/Double Clicker/g) ?? []).length;
     expect(occurrences).toBe(1);
   });
+
+  it("lists attendees in signup order, not alphabetical order", async () => {
+    // Neither query in db.ts has an ORDER BY of its own choosing — SQLite
+    // happens to satisfy a plain WHERE-on-session_id query by walking the
+    // (session_id, person_name_key) unique index, which returns rows sorted
+    // by folded name rather than by when they booked. Book two names that
+    // sort the opposite way alphabetically from the order they're booked in,
+    // and confirm the page shows them in the order they actually signed up.
+    // Last in the file deliberately: it doesn't need to leave spare capacity
+    // behind for a later test, unlike every other capacity-consuming test
+    // above.
+    const { id } = await findSessionWithSpareCapacity(2);
+    await book(id, "Zeta Booker");
+    await book(id, "Beta Booker");
+
+    const page = await fetch(baseUrl);
+    const doc = new JSDOM(await page.text()).window.document;
+    const names = [...doc.querySelector(`[data-session-id="${id}"] [data-attendees]`)!.children].map(
+      (li) => li.textContent,
+    );
+    expect(names.indexOf("Zeta Booker")).toBeLessThan(names.indexOf("Beta Booker"));
+  });
 });

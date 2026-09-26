@@ -80,10 +80,21 @@ export function listSessions(courseId: number): SessionWithSeats[] {
     .where(eq(sessions.courseId, courseId))
     .all()
     .map((session) => {
+      // Explicit, not decorative: with no ORDER BY, SQLite satisfies this
+      // WHERE-on-session_id query by walking the (session_id, person_name_key)
+      // unique index, so attendees come back sorted by folded name, not by
+      // signup order — an accident of the query plan, not a guarantee. The
+      // same shape of query runs again in bookSession below to build the
+      // broadcast payload; without an explicit order here too, nothing stops
+      // the two from silently disagreeing if a future change (an added index,
+      // a bigger table, a different SQLite version) shifts one plan and not
+      // the other. Ordering by id is also the more honest read of "who's
+      // booked" — signup order — than an alphabetised list would be.
       const rows = db
         .select({ personName: bookings.personName })
         .from(bookings)
         .where(eq(bookings.sessionId, session.id))
+        .orderBy(bookings.id)
         .all();
       return { ...session, booked: rows.length, bookedBy: rows.map((r) => r.personName) };
     });
@@ -134,6 +145,7 @@ export function bookSession(sessionId: number, personName: string): BookingResul
       .select({ personName: bookings.personName })
       .from(bookings)
       .where(eq(bookings.sessionId, sessionId))
+      .orderBy(bookings.id)
       .all()
       .map((r) => r.personName);
     return { ok: true, session: { ...session, booked: bookedBy.length, bookedBy } } as const;
