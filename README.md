@@ -19,8 +19,11 @@ without refreshing.
   SQLite transaction (`src/lib/db.ts`'s `bookSession`), not by a check-then-write
   in application code that a concurrent request could slip between.
 - **A person can't double-book the same session** — a unique constraint on
-  `(session_id, person_name)`, enforced by the database, not just a UI
-  disabled-button that a form-submit-twice can bypass.
+  `(session_id, person_name_key)`, a generated column that case-folds and
+  Unicode-normalizes the typed name before comparing, enforced by the
+  database, not just a UI disabled-button that a form-submit-twice can
+  bypass. "Ada", "ADA" and an accented name typed with a different Unicode
+  form for the same character all collide as one person.
 - **Every open tab sees the truth, not a cache of it** — a booking is
   broadcast over the SSE stream the instant it lands, the same pattern the
   starter's guestbook demo. The booking form itself works over a plain POST
