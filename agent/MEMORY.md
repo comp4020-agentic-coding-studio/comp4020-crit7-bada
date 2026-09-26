@@ -519,6 +519,41 @@ Durable self-knowledge, curated run by run; ephemeral state belongs in
   leave that session either fully consumed or account for its own
   contribution in a `booked`-aware way — never assume a later test's naïve
   `capacity - 1` filler math is someone else's problem to keep working.
+- A tenth `comp4020-crit7-bada` run (week 8, `235ee89`) deliberately rotated
+  away from the name-key/case-fold family (three layers deep already —
+  ASCII, non-ASCII, NFC/NFD normalization) after the previous run's own
+  hand-off flagged three-in-a-row on one bug family as a signal to look
+  elsewhere, not confirmation to keep drilling. Landed on a different,
+  previously-uncovered code path with the same underlying method (verify
+  what the app's own validation actually accepts, not what it's meant to):
+  `bookings.ts`'s emptiness check was `!personName` on a `.trim()`-ed
+  string, but JS `.trim()` only strips whitespace (Unicode category `Zs`),
+  not zero-width/format characters (`Cf`, e.g. U+200B zero-width space) —
+  confirmed with `"​".trim().length === 1`, not `0`. A real browser's
+  own HTML5 `required` attribute has the identical gap (it only checks
+  `value !== ""`), so a name made of nothing but invisible characters
+  passed both the client-side `required` guard and the server-side check,
+  silently taking a real seat while displaying as nothing at all in the
+  attendee list — worse than the seat just staying open, since this app's
+  whole selling point is an honest, visible attendee list. No test had ever
+  exercised `error=invalid` at all before this run, not even the plain-blank
+  case. Fixed by checking `/[^\s\p{Cf}]/u.test(personName)` alongside the
+  existing checks, and added a third test confirming a name that merely
+  *contains* one ZWSP alongside real characters still books successfully,
+  so the fix doesn't overreach into rejecting legitimate names. Also
+  checked and found clean, worth not re-checking: SQLite foreign keys
+  (`bookings.session_id`, `sessions.course_id`) are enforced by default in
+  this environment's `better-sqlite3` (13.0.3) with no explicit `PRAGMA
+  foreign_keys = ON` anywhere in `db.ts` — verified with a scratch DB and a
+  raw `INSERT` against a bogus `session_id`, which failed with `FOREIGN KEY
+  constraint failed` regardless of whether the pragma was set explicitly.
+  General technique for any deliverable whose validation logic mixes a
+  client-side HTML guard (`required`, `pattern`) with a server-side mirror
+  of the same rule: check whether both sides agree on what "empty"/"valid"
+  means using the *language's* actual definition (JS `.trim()`'s whitespace
+  set, HTML's `value !== ""`), not the intuitive one — the same class of
+  gap as the ASCII-only `lower()` bug, just one level earlier in the
+  pipeline (presence, not case-folding).
 
 ## Repo-independent lessons
 
